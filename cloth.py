@@ -1,7 +1,13 @@
 import os
 import csv
 import time
+from network import initialize_network
 import numpy as np
+import payments as ps
+import routing as rt
+import event as ev
+import heap as hp
+import htlc as htlc
 
 def write_output(network, payments, output_dir_name):
     if not os.path.exists(output_dir_name):
@@ -148,14 +154,14 @@ def main(argv):
     n_nodes = len(network.nodes)
     n_edges = len(network.edges)
     print("PAYMENTS INITIALIZATION")
-    payments = initialize_payments(pay_params, n_nodes, simulation.random_generator)
+    payments = ps.initialize_payments(pay_params, n_nodes, simulation.random_generator)
     print("EVENTS INITIALIZATION")
-    simulation.events = initialize_events(payments)
-    initialize_dijkstra(n_nodes, n_edges, payments)
+    simulation.events = ev.initialize_events(payments)
+    rt.initialize_dijkstra(n_nodes, n_edges, payments)
 
     print("INITIAL DIJKSTRA THREADS EXECUTION")
     start = time.time()
-    run_dijkstra_threads(network, payments, 0)
+    rt.run_dijkstra_threads(network, payments, 0)
     time_spent_thread = time.time() - start
     print(f"Time consumed by initial dijkstra executions: {time_spent_thread:.2f} s")
 
@@ -163,26 +169,26 @@ def main(argv):
     begin = time.time()
     simulation.current_time = 1
     while len(simulation.events) != 0:
-        event = heap_pop(simulation.events, compare_event)
+        event = hp.heap_pop(simulation.events, ev.compare_event)
         simulation.current_time = event.time
         if event.type == FINDPATH:
-            find_path(event, simulation, network, payments, pay_params.mpp)
+            htlc.find_path(event, simulation, network, payments, pay_params.mpp)
         elif event.type == SENDPAYMENT:
-            send_payment(event, simulation, network)
+            htlc.send_payment(event, simulation, network)
         elif event.type == FORWARDPAYMENT:
-            forward_payment(event, simulation, network)
+            htlc.forward_payment(event, simulation, network)
         elif event.type == RECEIVEPAYMENT:
-            receive_payment(event, simulation, network)
+            htlc.receive_payment(event, simulation, network)
         elif event.type == FORWARDSUCCESS:
-            forward_success(event, simulation, network)
+            htlc.forward_success(event, simulation, network)
         elif event.type == RECEIVESUCCESS:
-            receive_success(event, simulation, network)
+            htlc.receive_success(event, simulation, network)
         elif event.type == FORWARDFAIL:
-            forward_fail(event, simulation, network)
+            htlc.forward_fail(event, simulation, network)
         elif event.type == RECEIVEFAIL:
-            receive_fail(event, simulation, network)
+            htlc.receive_fail(event, simulation, network)
         elif event.type == OPENCHANNEL:
-            open_channel(network, simulation.random_generator)
+            htlc.open_channel(network, simulation.random_generator)
         else:
             print("ERROR wrong event type")
             exit(-1)

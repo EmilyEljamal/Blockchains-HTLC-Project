@@ -1,6 +1,14 @@
-import numpy as np
-import pandas as pd
+import numpy as np # type: ignore
+import pandas as pd # type: ignore
 import random
+
+MAXFEEBASE = 5000;
+MINFEEBASE = 1000;
+MAXFEEPROP = 10;
+MINFEEPROP = 1;
+MAXTIMELOCK = 100;
+MINTIMELOCK = 10;
+
 
 class Node:
     def __init__(self, id):

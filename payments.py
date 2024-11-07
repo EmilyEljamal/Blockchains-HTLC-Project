@@ -1,6 +1,6 @@
 import random
-import math
-import numpy as np
+import math 
+import numpy as np # type: ignore
 import csv
 from dataclasses import dataclass, field
 
