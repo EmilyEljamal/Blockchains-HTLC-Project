@@ -9,6 +9,34 @@ import event as ev
 import heap as hp
 import htlc as htlc
 
+class NetworkParams:
+    def __init__(self, n_nodes, n_channels, capacity_per_channel, faulty_node_prob, network_from_file, nodes_filename, channels_filename, edges_filename):
+        self.n_nodes = n_nodes  
+        self.n_channels = n_channels  
+        self.capacity_per_channel = capacity_per_channel  
+        self.faulty_node_prob = faulty_node_prob  
+        self.network_from_file = network_from_file  
+        self.nodes_filename = nodes_filename  
+        self.channels_filename = channels_filename  
+        self.edges_filename = edges_filename  
+
+
+class PaymentsParams:
+    def __init__(self, inverse_payment_rate, n_payments, average_amount, payments_from_file, payments_filename, mpp):
+        self.inverse_payment_rate = inverse_payment_rate  
+        self.n_payments = n_payments  
+        self.average_amount = average_amount  
+        self.payments_from_file = payments_from_file  
+        self.payments_filename = payments_filename  
+        self.mpp = mpp  
+
+
+class Simulation:
+    def __init__(self, current_time, events, random_generator):
+        self.current_time = current_time  
+        self.events = events  
+        self.random_generator = random_generator  
+
 def write_output(network, payments, output_dir_name):
     if not os.path.exists(output_dir_name):
         print("cloth.py: Cannot find the output directory. The output will be stored in the current directory.")
@@ -171,23 +199,23 @@ def main(argv):
     while len(simulation.events) != 0:
         event = hp.heap_pop(simulation.events, ev.compare_event)
         simulation.current_time = event.time
-        if event.type == FINDPATH:
+        if event.type == ev.FINDPATH:
             htlc.find_path(event, simulation, network, payments, pay_params.mpp)
-        elif event.type == SENDPAYMENT:
+        elif event.type == ev.SENDPAYMENT:
             htlc.send_payment(event, simulation, network)
-        elif event.type == FORWARDPAYMENT:
+        elif event.type == ev.FORWARDPAYMENT:
             htlc.forward_payment(event, simulation, network)
-        elif event.type == RECEIVEPAYMENT:
+        elif event.type == ev.RECEIVEPAYMENT:
             htlc.receive_payment(event, simulation, network)
-        elif event.type == FORWARDSUCCESS:
+        elif event.type == ev.FORWARDSUCCESS:
             htlc.forward_success(event, simulation, network)
-        elif event.type == RECEIVESUCCESS:
+        elif event.type == ev.RECEIVESUCCESS:
             htlc.receive_success(event, simulation, network)
-        elif event.type == FORWARDFAIL:
+        elif event.type == ev.FORWARDFAIL:
             htlc.forward_fail(event, simulation, network)
-        elif event.type == RECEIVEFAIL:
+        elif event.type == ev.RECEIVEFAIL:
             htlc.receive_fail(event, simulation, network)
-        elif event.type == OPENCHANNEL:
+        elif event.type == ev.OPENCHANNEL:
             htlc.open_channel(network, simulation.random_generator)
         else:
             print("ERROR wrong event type")
