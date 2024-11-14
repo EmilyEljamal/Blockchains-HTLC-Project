@@ -23,6 +23,15 @@ class Payment:
     is_shard: bool = False
     shards_id: list = field(default_factory=lambda: [-1, -1])
 
+def new_payment(id: int, sender: int, receiver: int, amount: int, start_time: int) -> Payment:
+    return Payment(
+        id=id,
+        sender=sender,
+        receiver=receiver,
+        amount=amount,
+        start_time=start_time
+    )
+
 def generate_random_payments(pay_params, n_nodes, random_generator):
     with open("payments.csv", "w", newline='') as payments_file:
         writer = csv.writer(payments_file)
