@@ -6,7 +6,7 @@ import numpy as np
 import payments as ps
 import routing as rt
 import event as ev
-import heap as hp
+import heap_ as hp
 import htlc as htlc
 
 class NetworkParams:
@@ -186,6 +186,7 @@ def main(argv):
     print("EVENTS INITIALIZATION")
     simulation.events = ev.initialize_events(payments)
     rt.initialize_dijkstra(n_nodes, n_edges, payments)
+    htlc.initialize_paths(payments, network)
 
     print("INITIAL DIJKSTRA THREADS EXECUTION")
     start = time.time()

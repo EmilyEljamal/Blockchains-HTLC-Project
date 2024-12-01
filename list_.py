@@ -39,5 +39,6 @@ def is_in_list(head, data, is_equal):
         iterator = iterator.next
     return False
 
-def list_free(head):
-    head = None  # In Python, garbage collection will handle freeing memory.
+def list_free(lst):
+    """Frees the list resources by clearing its contents."""
+    lst.clear()

@@ -4,6 +4,9 @@ class Array:
         self.index = 0
         self.elements = [None] * size
 
+    def __len__(self):
+        return self.length()
+
     def _resize(self):
         self.size *= 2
         self.elements.extend([None] * (self.size - len(self.elements)))

@@ -3,10 +3,8 @@ from math import pow
 from array_ import Array
 from heap_ import Heap
 from list_ import push, pop, get_by_key, list_len, list_free, is_in_list
-# from network import Node, Edge, Channel, Network, Policy, new_edge
-# from payments import Payment, PaymentErrorType
-# from htlc import compute_fee
-# from utils import is_key_equal, is_equal_key_result, is_equal_long
+from htlc import compute_fee
+from utils import is_key_equal, is_equal_key_result, is_equal_long
 import sys
 
 # Constants
@@ -49,12 +47,13 @@ class Distance:
         self.next_edge = next_edge
 
 class RouteHop:
-    def __init__(self, from_node_id, to_node_id, edge_id, amount_to_forward, timelock):
+    def __init__(self, from_node_id, to_node_id, amount_to_forward, timelock, edge_id=None):
         self.from_node_id = from_node_id
         self.to_node_id = to_node_id
-        self.edge_id = edge_id
         self.amount_to_forward = amount_to_forward
         self.timelock = timelock
+        self.edge_id = edge_id
+
 
 class Route:
     def __init__(self, total_amount=0, total_fee=0, total_timelock=0):
@@ -69,6 +68,10 @@ class PathHop:
         self.receiver = receiver
         self.edge = edge
 
+
+def transform_path_into_route(path, amount, network):
+    route = Route(path)  # Example logic: Replace with actual route transformation logic.
+    return route
 
 
 # Initialize Dijkstra structures and job queue
