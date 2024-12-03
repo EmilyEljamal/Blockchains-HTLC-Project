@@ -1,11 +1,12 @@
 import numpy as np
 import sys
+from list_ import Element
 from event import new_event
-from network import Network, Edge, Node, Policy
-from payments import Payment
+from network import Network, Edge, Node, Policy, Channel
+from payments import Payment, compute_fee
 from routing import dijkstra, transform_path_into_route
 from utils import is_present
-from typing import List
+from typing import List, Optional
 
 OFFLINELATENCY = 3000  # 3 seconds
 
@@ -28,10 +29,69 @@ class NodePairResult:
         self.success_amount = 0
 
 
-# Compute the fees to be paid to a hop for forwarding the payment
-def compute_fee(amount_to_forward: int, policy: Policy) -> int:
-    fee = (policy.fee_proportional * amount_to_forward) // 1000000
-    return policy.fee_base + fee
+def open_channel(network, random_generator):
+    """
+    Opens a new payment channel during the simulation.
+    """
+    channel_id = len(network.channels)
+    edge1_id = len(network.edges)
+    edge2_id = edge1_id + 1
+
+    node1_id = random_generator.integers(0, len(network.nodes))
+    node2_id = random_generator.integers(0, len(network.nodes))
+
+    while node2_id == node1_id:
+        node2_id = random_generator.integers(0, len(network.nodes))
+
+    # Generate a random capacity for the channel
+    capacity = random_generator.integers(1_000_000, 10_000_000)  # Example range in millisatoshis
+
+    # Create policies for the edges
+    policy1 = Policy(
+        fee_proportional=random_generator.integers(1, 10),
+        fee_base=random_generator.integers(1000, 5000),
+        min_htlc=random_generator.integers(1, 1000),
+        timelock=random_generator.integers(10, 100)
+    )
+    policy2 = Policy(
+        fee_proportional=random_generator.integers(1, 10),
+        fee_base=random_generator.integers(1000, 5000),
+        min_htlc=random_generator.integers(1, 1000),
+        timelock=random_generator.integers(10, 100)
+    )
+
+    # Create edges with additional parameters
+    edge1 = Edge(
+        id_=edge1_id,
+        channel_id=channel_id,
+        counter_edge_id=edge2_id,
+        from_node_id=node1_id,
+        to_node_id=node2_id,
+        balance=capacity // 2,
+        policy=policy1
+    )
+    edge2 = Edge(
+        id_=edge2_id,
+        channel_id=channel_id,
+        counter_edge_id=edge1_id,
+        from_node_id=node2_id,
+        to_node_id=node1_id,
+        balance=capacity // 2,
+        policy=policy2
+    )
+
+    # Create the channel
+    channel = Channel(channel_id, edge1_id, edge2_id, node1_id, node2_id, capacity)
+
+    # Add channel and edges to the network
+    network.channels.append(channel)
+    network.edges.append(edge1)
+    network.edges.append(edge2)
+
+    # Update nodes
+    network.nodes[node1_id].open_edges.append(edge1_id)
+    network.nodes[node2_id].open_edges.append(edge2_id)
+
 
 
 # Check whether there is sufficient balance in an edge for forwarding the payment
@@ -67,41 +127,74 @@ def get_route_hop(node_id, route_hops, is_sender):
 
 
 # Set the result of a node pair as success
-def set_node_pair_result_success(results: List[NodePairResult], from_node_id: int, to_node_id: int, success_amount: int, success_time: int):
-    result = next((res for res in results if res.to_node_id == to_node_id), None)
+def set_node_pair_result_success(results: Optional[List[Optional[Element]]], from_node_id: int, to_node_id: int, success_amount: int, success_time: int):
+    if results is None:
+        raise ValueError("results must be initialized before use.")
 
+        # Ensure results[from_node_id] exists
+    if results[from_node_id] is None:
+        results[from_node_id] = Element([])  # Initialize as an empty list wrapped in an `Element`
+
+        # Retrieve or create the list of `NodePairResult` for this node
+    node_pair_results: List[NodePairResult] = results[from_node_id].data if isinstance(results[from_node_id],
+                                                                                        Element) else []
+
+    # Find the result for `to_node_id`, or None
+    result = next(
+        (res for res in node_pair_results if isinstance(res, NodePairResult) and res.to_node_id == to_node_id), None)
+
+    # If no result exists, create a new one and add it to the list
     if result is None:
         result = NodePairResult(to_node_id)
-        if results[from_node_id] is None:  # Handle None initialization
-            results[from_node_id] = []
-        results[from_node_id].append(result)  # Use list.append
+        node_pair_results.append(result)
 
+    # Update the result with success details
     result.success_time = success_time
     if success_amount > result.success_amount:
         result.success_amount = success_amount
     if result.fail_time != 0 and result.success_amount > result.fail_amount:
         result.fail_amount = success_amount + 1
 
+    # Re-wrap the list back into the `Element` if needed
+    results[from_node_id] = Element(node_pair_results)
+
 
 # Set the result of a node pair as fail
-def set_node_pair_result_fail(results: List[NodePairResult], from_node_id: int, to_node_id: int, fail_amount: int, fail_time: int):
-    result = next((res for res in results if res.to_node_id == to_node_id), None)
+def set_node_pair_result_fail(results: Optional[List[Optional[Element]]], from_node_id: int, to_node_id: int, fail_amount: int, fail_time: int):
+    if results is None:
+        raise ValueError("results must be initialized before use.")
 
+        # Ensure results[from_node_id] exists
+    if results[from_node_id] is None:
+        results[from_node_id] = Element([])  # Initialize as an empty list wrapped in an `Element`
+
+        # Retrieve or create the list of `NodePairResult` for this node
+    node_pair_results: List[NodePairResult] = results[from_node_id].data if isinstance(results[from_node_id],
+                                                                                        Element) else []
+
+    # Find the result for `to_node_id`, or None
+    result = next(
+        (res for res in node_pair_results if isinstance(res, NodePairResult) and res.to_node_id == to_node_id), None)
+
+    # If no result exists, create a new one and add it to the list
     if result is None:
         result = NodePairResult(to_node_id)
-        if results[from_node_id] is None:
-            results[from_node_id] = []
-        results[from_node_id].append(result)
+        node_pair_results.append(result)
 
+    # Check the conditions for updating the result
     if fail_amount > result.fail_amount and fail_time - result.fail_time < 60000:
         return
 
+    # Update the result with fail details
     result.fail_amount = fail_amount
     result.fail_time = fail_time
     if fail_amount == 0:
         result.success_amount = 0
     elif fail_amount != 0 and fail_amount <= result.success_amount:
         result.success_amount = fail_amount - 1
+
+    # Re-wrap the list back into the `Element` if needed
+    results[from_node_id] = Element(node_pair_results)
 
 
 # Process a payment which succeeded
@@ -134,6 +227,7 @@ def generate_send_payment_event(payment: Payment, path: List[RouteHop], simulati
     payment.route = route
     next_event_time = simulation.current_time
     send_payment_event = new_event(next_event_time, "SENDPAYMENT", payment.sender, payment)
+    print("here21")
     simulation.events.insert(send_payment_event)
 
 
@@ -182,6 +276,7 @@ def find_path(event, simulation, network: Network, payments: List[Payment], mpp:
         path = dijkstra(payment.sender, payment.receiver, payment.amount, network, simulation.current_time, 0)
 
     if path:
+        print("Path found")
         generate_send_payment_event(payment, path, simulation, network)
         return
 

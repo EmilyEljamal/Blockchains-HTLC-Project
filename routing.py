@@ -1,9 +1,11 @@
 import threading
 from math import pow
+from typing import List, Optional
+
 from array_ import Array
 from heap_ import Heap
-from list_ import push, pop, get_by_key, list_len, list_free, is_in_list
-from htlc import compute_fee
+from list_ import push, get_by_key, list_len, list_free, is_in_list, pop
+from payments import compute_fee
 from utils import is_key_equal, is_equal_key_result, is_equal_long
 import sys
 
@@ -20,11 +22,10 @@ RISKFACTOR = 15
 PAYMENTATTEMPTPENALTY = 100000
 
 # Placeholder global variables
-distance = [None] * N_THREADS
-distance_heap = [None] * N_THREADS
+distance_heap: List[Optional[Heap]] = [None] * N_THREADS
 data_mutex = threading.Lock()
 jobs_mutex = threading.Lock()
-paths = None
+paths = []
 jobs = None
 
 # Define auxiliary classes and structures (some are placeholders based on header files)
@@ -36,15 +37,17 @@ class ThreadArgs:
         self.data_index = data_index
 
 class Distance:
-    def __init__(self, node, distance=INF, amt_to_receive=0, fee=0, probability=1.0, timelock=0, weight=0, next_edge=-1):
+    def __init__(self, node, distance_=INF, amt_to_receive=0, fee=0, probability=1.0, timelock=0, weight=0, next_edge=-1):
         self.node = node
-        self.distance = distance
+        self.distance = distance_
         self.amt_to_receive = amt_to_receive
         self.fee = fee
         self.probability = probability
         self.timelock = timelock
         self.weight = weight
         self.next_edge = next_edge
+
+distance: List[Optional[List[Distance]]] = [None] * N_THREADS
 
 class RouteHop:
     def __init__(self, from_node_id, to_node_id, amount_to_forward, timelock, edge_id=None):
@@ -70,21 +73,76 @@ class PathHop:
 
 
 def transform_path_into_route(path, amount, network):
-    route = Route(path)  # Example logic: Replace with actual route transformation logic.
+    """
+    Transforms a given path into a route for payment.
+
+    :param path: List of node IDs representing the path.
+    :param amount: Amount to forward along the path.
+    :param network: Network object containing nodes and edges.
+    :return: A Route object with hops populated based on the path and network information.
+    """
+    if len(path) < 2:
+        raise ValueError("Path must contain at least two nodes.")
+
+    route_hops = []
+    timelock = network.final_timelock  # Assuming a predefined constant for the final timelock.
+    total_fee = 0
+
+    # Traverse the path and create RouteHops
+    for i in range(len(path) - 1):
+        from_node_id = path[i]
+        to_node_id = path[i + 1]
+
+        # Find the edge connecting these two nodes
+        edge = next(
+            (edge for edge in network.edges if edge.from_node_id == from_node_id and edge.to_node_id == to_node_id),
+            None
+        )
+        if edge is None:
+            raise ValueError(f"No edge found between node {from_node_id} and node {to_node_id} in the network.")
+
+        # Calculate the amount to forward and the fee
+        fee = compute_fee(amount, edge.policy)
+        amount_to_forward = amount + fee
+
+        # Create a RouteHop
+        route_hop = RouteHop(
+            from_node_id=from_node_id,
+            to_node_id=to_node_id,
+            edge_id=edge.id_,
+            amount_to_forward=amount_to_forward,
+            timelock=timelock
+        )
+
+        # Update the timelock for the next hop
+        timelock += edge.policy.timelock
+
+        # Add the hop to the route
+        route_hops.append(route_hop)
+
+        # Update the amount and total fee for the next hop
+        amount = amount_to_forward
+        total_fee += fee
+
+    # Create and populate the Route object
+    route = Route(total_amount=amount, total_fee=total_fee, total_timelock=timelock)
+    for hop in route_hops:
+        route.route_hops.insert(hop)  # Add each hop to the Route's Array of hops
+
     return route
 
 
 # Initialize Dijkstra structures and job queue
 def initialize_dijkstra(n_nodes, n_edges, payments):
     global paths, jobs
-    paths = [None] * payments.length()
+    paths = [None] * len(payments)
     for i in range(N_THREADS):
         distance[i] = [Distance(node) for node in range(n_nodes)]
         distance_heap[i] = Heap(n_edges)
 
     jobs = None
-    for i in range(payments.length()):
-        payment = payments.get(i)
+    for i in range(len(payments)):
+        payment = payments[i]
         jobs = push(jobs, payment.id)
 
 def compare_distance(a, b):
@@ -94,21 +152,58 @@ def compare_distance(a, b):
     return -1 if a.distance < b.distance else 1
 
 
-# Dijkstra threading function
-def dijkstra_thread(args):
-    global jobs
+class DijkstraThreadArgs:
+    def __init__(self, network, payments, current_time, data_index):
+        self.network = network
+        self.payments = payments
+        self.current_time = current_time
+        self.data_index = data_index
+
+def run_dijkstra_threads(network, payments, current_time, num_threads=4):
+    """
+    Runs the Dijkstra algorithm for all payments using multiple threads.
+    :param network: The network object containing nodes and edges.
+    :param payments: A list of payments for which paths are to be computed.
+    :param current_time: The current simulation time.
+    :param num_threads: Number of threads to use for parallel computation.
+    """
+    global jobs, paths
+
+    # Initialize jobs and paths
+    jobs = None
+    paths = [None] * len(payments)
+
+    # Create thread arguments
+    args = DijkstraThreadArgs(network, payments, current_time, data_index=0)
+
+    # Start threads
+    threads = []
+    for _ in range(num_threads):
+        thread = threading.Thread(target=dijkstra_thread, args=(args,))
+        threads.append(thread)
+        thread.start()
+
+    # Wait for threads to finish
+    for thread in threads:
+        thread.join()
+
+    # Return the computed paths
+    return paths
+
+def dijkstra_thread(args: DijkstraThreadArgs):
+    global jobs, paths
     while True:
-        if jobs is None:
-            return
         with jobs_mutex:
-            jobs, data = pop(jobs)
+            if not jobs:  # No jobs left
+                return
+            jobs, data = pop(jobs)  # Pop from the job queue
             payment_id = data if data else None
         if payment_id is None:
             continue
         with data_mutex:
-            payment = args.payments.get(payment_id)
+            payment = args.payments[payment_id]
         hops = dijkstra(payment.sender, payment.receiver, payment.amount, args.network, args.current_time, args.data_index)
-        paths[payment.id] = hops
+        paths[payment_id] = hops
 
 
 def dijkstra(source, target, amount, network, current_time, p):
@@ -133,6 +228,10 @@ def dijkstra(source, target, amount, network, current_time, p):
         dist.next_edge = -1
 
     # Initialize the target node distance
+    if distance[p] is None:
+        raise ValueError(
+            f"distance[{p}] is not initialized. Ensure `initialize_dijkstra` is called before accessing `distance`.")
+
     distance[p][target].node = target
     distance[p][target].amt_to_receive = amount
     distance[p][target].fee = 0

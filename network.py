@@ -29,7 +29,7 @@ class Node:
     def __init__(self, id_):
         self.id = id_
         self.open_edges = Array(10)
-        self.results: Optional[List[Optional[Element]]] = None
+        self.results: List[Optional[Element]] = [None]
         self.explored = False
 
 class Channel:
@@ -148,14 +148,24 @@ def generate_random_network(net_params):
 
 # Initialize Network
 def initialize_network(net_params):
-    if net_params['network_from_file']:
-        return generate_network_from_files(
-            net_params['nodes_filename'],
-            net_params['channels_filename'],
-            net_params['edges_filename']
+    if net_params.network_from_file:
+        network = generate_network_from_files(
+            net_params.nodes_filename,
+            net_params.channels_filename,
+            net_params.edges_filename
         )
     else:
-        return generate_random_network(net_params)
+        network = generate_random_network({
+            'n_nodes': net_params.n_nodes,
+            'n_channels': net_params.n_channels,
+            'capacity_per_channel': net_params.capacity_per_channel,
+            'faulty_node_prob': net_params.faulty_node_prob
+        })
+
+    n_nodes = len(network.nodes)
+    for node in network.nodes:
+        node.results = [None] * n_nodes
+    return network
 
 def generate_network_from_files(nodes_filename: str, channels_filename: str, edges_filename: str) -> Network:
     network = Network()

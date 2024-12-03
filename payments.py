@@ -2,6 +2,7 @@ import numpy as np
 import csv
 from typing import List
 from enum import Enum
+from network import Policy
 
 # Define PaymentErrorType
 class PaymentErrorType(Enum):
@@ -23,6 +24,8 @@ class Payment:
         self.is_timeout = False
         self.end_time = 0
         self.attempts = 0
+        self.is_shard = False
+        self.shards_id = [-1, -1]
         self.error = Error(type_="NOERROR", hop=None)
 
 class Error:
@@ -40,6 +43,11 @@ def new_payment(id_: int, sender: int, receiver: int, amount: int, start_time: i
         amount=amount,
         start_time=start_time
     )
+
+# Compute the fees to be paid to a hop for forwarding the payment
+def compute_fee(amount_to_forward: int, policy: Policy) -> int:
+    fee = (policy.fee_proportional * amount_to_forward) // 1000000
+    return policy.fee_base + fee
 
 # Generate Random Payments
 def generate_random_payments(pay_params, n_nodes: int, random_generator: np.random.Generator) -> None:

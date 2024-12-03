@@ -7,6 +7,10 @@ class Array:
     def __len__(self):
         return self.length()
 
+    def __iter__(self):
+        for i in range(self.length()):
+            yield self.elements[i]
+
     def _resize(self):
         self.size *= 2
         self.elements.extend([None] * (self.size - len(self.elements)))

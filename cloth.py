@@ -6,36 +6,40 @@ import numpy as np
 import payments as ps
 import routing as rt
 import event as ev
-import heap_ as hp
 import htlc as htlc
 
 class NetworkParams:
-    def __init__(self, n_nodes, n_channels, capacity_per_channel, faulty_node_prob, network_from_file, nodes_filename, channels_filename, edges_filename):
-        self.n_nodes = n_nodes  
-        self.n_channels = n_channels  
-        self.capacity_per_channel = capacity_per_channel  
-        self.faulty_node_prob = faulty_node_prob  
-        self.network_from_file = network_from_file  
-        self.nodes_filename = nodes_filename  
-        self.channels_filename = channels_filename  
-        self.edges_filename = edges_filename  
+    def __init__(self, n_nodes=100, n_channels=500, capacity_per_channel=1000,
+                 faulty_node_prob=0.01, nodes_filename="nodes_ln.csv",
+                 channels_filename="channels_ln.csv", edges_filename="edges_ln.csv",
+                 network_from_file=False):
+        self.n_nodes = n_nodes
+        self.n_channels = n_channels
+        self.capacity_per_channel = capacity_per_channel
+        self.faulty_node_prob = faulty_node_prob
+        self.nodes_filename = nodes_filename
+        self.channels_filename = channels_filename
+        self.edges_filename = edges_filename
+        self.network_from_file = network_from_file
 
-
+# Parameters for the payments
 class PaymentsParams:
-    def __init__(self, inverse_payment_rate, n_payments, average_amount, payments_from_file, payments_filename, mpp):
-        self.inverse_payment_rate = inverse_payment_rate  
-        self.n_payments = n_payments  
-        self.average_amount = average_amount  
-        self.payments_from_file = payments_from_file  
-        self.payments_filename = payments_filename  
-        self.mpp = mpp  
+    def __init__(self, average_amount=1000, inverse_payment_rate=1.0,
+                 n_payments=1000, payments_from_file=False,
+                 payments_filename="payments.csv", mpp=0):
+        self.average_amount = average_amount
+        self.inverse_payment_rate = inverse_payment_rate
+        self.n_payments = n_payments
+        self.payments_from_file = payments_from_file
+        self.payments_filename = payments_filename
+        self.mpp = mpp
 
 
 class Simulation:
-    def __init__(self, current_time, events, random_generator):
-        self.current_time = current_time  
-        self.events = events  
-        self.random_generator = random_generator  
+    def __init__(self, current_time=0, events=None):
+        self.current_time = current_time
+        self.events = events
+        self.random_generator = np.random.default_rng()
 
 def write_output(network, payments, output_dir_name):
     if not os.path.exists(output_dir_name):
@@ -78,7 +82,7 @@ def write_output(network, payments, output_dir_name):
             if len(node.open_edges) == 0:
                 row.append(-1)
             else:
-                open_edges = '-'.join(str(id) for id in node.open_edges)
+                open_edges = '-'.join(str(id_) for id_ in node.open_edges)
                 row.append(open_edges)
             writer.writerow(row)
 
@@ -101,40 +105,40 @@ def read_input(net_params, pay_params):
     try:
         with open("cloth_input.txt", "r") as input_file:
             for line in input_file:
-                parameter, value = line.strip().split("=")
-                parameter = parameter.strip()
-                value = value.strip()
+                key, value = line.strip().split("=", 1)
+                if not value:  # If value is missing, skip or set default
+                    continue
 
-                if parameter == "generate_network_from_file":
-                    net_params.network_from_file = 1 if value == "true" else 0
-                elif parameter == "nodes_filename":
+                if key == "generate_network_from_file":
+                    net_params.network_from_file = value.lower() == "true"
+                elif key == "nodes_filename":
                     net_params.nodes_filename = value
-                elif parameter == "channels_filename":
+                elif key == "channels_filename":
                     net_params.channels_filename = value
-                elif parameter == "edges_filename":
+                elif key == "edges_filename":
                     net_params.edges_filename = value
-                elif parameter == "n_additional_nodes":
-                    net_params.n_nodes = int(value)
-                elif parameter == "n_channels_per_node":
-                    net_params.n_channels = int(value)
-                elif parameter == "capacity_per_channel":
-                    net_params.capacity_per_channel = int(value)
-                elif parameter == "faulty_node_probability":
-                    net_params.faulty_node_prob = float(value)
-                elif parameter == "generate_payments_from_file":
-                    pay_params.payments_from_file = 1 if value == "true" else 0
-                elif parameter == "payments_filename":
+                elif key == "n_additional_nodes":
+                    net_params.n_nodes = int(value) if value else net_params.n_nodes
+                elif key == "n_channels_per_node":
+                    net_params.n_channels = int(value) if value else net_params.n_channels
+                elif key == "capacity_per_channel":
+                    net_params.capacity_per_channel = int(value) if value else net_params.capacity_per_channel
+                elif key == "faulty_node_probability":
+                    net_params.faulty_node_prob = float(value) if value else net_params.faulty_node_prob
+                elif key == "generate_payments_from_file":
+                    pay_params.payments_from_file = value.lower() == "true"
+                elif key == "payments_filename":
                     pay_params.payments_filename = value
-                elif parameter == "payment_rate":
-                    pay_params.inverse_payment_rate = 1.0 / float(value)
-                elif parameter == "n_payments":
-                    pay_params.n_payments = int(value)
-                elif parameter == "average_payment_amount":
-                    pay_params.average_amount = float(value)
-                elif parameter == "mpp":
-                    pay_params.mpp = int(value)
+                elif key == "payment_rate":
+                    pay_params.payment_rate = float(value) if value else pay_params.payment_rate
+                elif key == "n_payments":
+                    pay_params.n_payments = int(value) if value else pay_params.n_payments
+                elif key == "average_payment_amount":
+                    pay_params.average_amount = int(value) if value else pay_params.average_amount
+                elif key == "mpp":
+                    pay_params.mpp = int(value) if value else pay_params.mpp
                 else:
-                    raise ValueError(f"Unknown parameter {parameter}")
+                    raise ValueError(f"Unknown parameter {key}")
     except FileNotFoundError:
         print("ERROR: cannot open file <cloth_input.txt> in current directory.")
         exit(-1)
@@ -178,7 +182,7 @@ def main(argv):
     simulation = Simulation()
     simulation.random_generator = initialize_random_generator()
     print("NETWORK INITIALIZATION")
-    network = initialize_network(net_params, simulation.random_generator)
+    network = initialize_network(net_params)
     n_nodes = len(network.nodes)
     n_edges = len(network.edges)
     print("PAYMENTS INITIALIZATION")
@@ -197,26 +201,26 @@ def main(argv):
     print("EXECUTION OF THE SIMULATION")
     begin = time.time()
     simulation.current_time = 1
-    while len(simulation.events) != 0:
-        event = hp.heap_pop(simulation.events, ev.compare_event)
+    while simulation.events.length() != 0:
+        event = simulation.events.pop(ev.compare_event)
         simulation.current_time = event.time
-        if event.type == ev.FINDPATH:
-            htlc.find_path(event, simulation, network, payments, pay_params.mpp)
-        elif event.type == ev.SENDPAYMENT:
+        if event.type == ev.EventType.FINDPATH:
+            htlc.find_path(event, simulation, network, payments, pay_params.mpp == 1)
+        elif event.type == ev.EventType.SENDPAYMENT:
             htlc.send_payment(event, simulation, network)
-        elif event.type == ev.FORWARDPAYMENT:
+        elif event.type == ev.EventType.FORWARDPAYMENT:
             htlc.forward_payment(event, simulation, network)
-        elif event.type == ev.RECEIVEPAYMENT:
+        elif event.type == ev.EventType.RECEIVEPAYMENT:
             htlc.receive_payment(event, simulation, network)
-        elif event.type == ev.FORWARDSUCCESS:
+        elif event.type == ev.EventType.FORWARDSUCCESS:
             htlc.forward_success(event, simulation, network)
-        elif event.type == ev.RECEIVESUCCESS:
+        elif event.type == ev.EventType.RECEIVESUCCESS:
             htlc.receive_success(event, simulation, network)
-        elif event.type == ev.FORWARDFAIL:
+        elif event.type == ev.EventType.FORWARDFAIL:
             htlc.forward_fail(event, simulation, network)
-        elif event.type == ev.RECEIVEFAIL:
+        elif event.type == ev.EventType.RECEIVEFAIL:
             htlc.receive_fail(event, simulation, network)
-        elif event.type == ev.OPENCHANNEL:
+        elif event.type == ev.EventType.OPENCHANNEL:
             htlc.open_channel(network, simulation.random_generator)
         else:
             print("ERROR wrong event type")

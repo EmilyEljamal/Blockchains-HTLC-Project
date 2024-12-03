@@ -30,10 +30,10 @@ def compare_event(e1, e2):
         return 0
     return -1 if e1.time < e2.time else 1
 
-def initialize_events(payments_array):
-    events_heap = Heap(size=payments_array.length() * 10)  # Initializing the heap based on Array size
-    for i in range(payments_array.length()):
-        payment = payments_array.get(i)
+def initialize_events(payments_array) -> Heap:
+    events_heap = Heap(size=len(payments_array) * 10)  # Initializing the heap based on Array size
+    for i in range(len(payments_array)):
+        payment = payments_array[i]
         event = new_event(payment.start_time, EventType.FINDPATH, payment.sender, payment)
         events_heap.insert(event, compare_event)
     return events_heap
