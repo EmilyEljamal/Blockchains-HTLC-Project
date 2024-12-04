@@ -1,12 +1,15 @@
 import os
 import csv
 import time
+
+from logger import clear_, print_
 from network import initialize_network
 import numpy as np
 import payments as ps
 import routing as rt
 import event as ev
 import htlc as htlc
+
 
 class NetworkParams:
     def __init__(self, n_nodes=100, n_channels=500, capacity_per_channel=1000,
@@ -43,7 +46,7 @@ class Simulation:
 
 def write_output(network, payments, output_dir_name):
     if not os.path.exists(output_dir_name):
-        print("cloth.py: Cannot find the output directory. The output will be stored in the current directory.")
+        print_("cloth.py: Cannot find the output directory. The output will be stored in the current directory.")
         output_dir_name = "./"
 
     with open(os.path.join(output_dir_name, "channels_output.csv"), "w", newline='') as csv_channel_output:
@@ -140,7 +143,7 @@ def read_input(net_params, pay_params):
                 else:
                     raise ValueError(f"Unknown parameter {key}")
     except FileNotFoundError:
-        print("ERROR: cannot open file <cloth_input.txt> in current directory.")
+        print_("ERROR: cannot open file <cloth_input.txt> in current directory.")
         exit(-1)
 
 def has_shards(payment):
@@ -170,35 +173,36 @@ def initialize_random_generator():
     return np.random.default_rng()
 
 def main(argv):
+    clear_()
     if len(argv) != 2:
-        print("ERROR cloth.py: please specify the output directory")
+        print_("ERROR cloth.py: please specify the output directory")
         return -1
 
     output_dir_name = argv[1]
-    net_params = NetworkParams()
-    pay_params = PaymentsParams()
+    net_params = NetworkParams(network_from_file=True)
+    pay_params = PaymentsParams(payments_from_file=True)
     read_input(net_params, pay_params)
 
     simulation = Simulation()
     simulation.random_generator = initialize_random_generator()
-    print("NETWORK INITIALIZATION")
+    print_("NETWORK INITIALIZATION")
     network = initialize_network(net_params)
     n_nodes = len(network.nodes)
     n_edges = len(network.edges)
-    print("PAYMENTS INITIALIZATION")
+    print_("PAYMENTS INITIALIZATION")
     payments = ps.initialize_payments(pay_params, n_nodes, simulation.random_generator)
-    print("EVENTS INITIALIZATION")
+    print_("EVENTS INITIALIZATION")
     simulation.events = ev.initialize_events(payments)
     rt.initialize_dijkstra(n_nodes, n_edges, payments)
     htlc.initialize_paths(payments, network)
 
-    print("INITIAL DIJKSTRA THREADS EXECUTION")
+    print_("INITIAL DIJKSTRA THREADS EXECUTION")
     start = time.time()
     rt.run_dijkstra_threads(network, payments, 0)
     time_spent_thread = time.time() - start
-    print(f"Time consumed by initial dijkstra executions: {time_spent_thread:.2f} s")
+    print_(f"Time consumed by initial dijkstra executions: {time_spent_thread:.2f} s")
 
-    print("EXECUTION OF THE SIMULATION")
+    print_("EXECUTION OF THE SIMULATION")
     begin = time.time()
     simulation.current_time = 1
     while simulation.events.length() != 0:
@@ -223,14 +227,15 @@ def main(argv):
         elif event.type == ev.EventType.OPENCHANNEL:
             htlc.open_channel(network, simulation.random_generator)
         else:
-            print("ERROR wrong event type")
+            print_(event.type)
+            print_("ERROR wrong event type")
             exit(-1)
 
     if pay_params.mpp:
         post_process_payment_stats(payments)
 
     time_spent = time.time() - begin
-    print(f"Time consumed by simulation events: {time_spent:.2f} s")
+    print_(f"Time consumed by simulation events: {time_spent:.2f} s")
 
     write_output(network, payments, output_dir_name)
 

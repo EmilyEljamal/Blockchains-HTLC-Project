@@ -22,6 +22,8 @@ class Array:
         self.index += 1
 
     def get(self, i):
+        if i == -1:
+            return self.elements[self.index - 1]
         if i >= self.size or i >= self.index:
             return None
         return self.elements[i]

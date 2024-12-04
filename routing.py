@@ -9,6 +9,8 @@ from payments import compute_fee
 from utils import is_key_equal, is_equal_key_result, is_equal_long
 import sys
 
+from logger import print_
+
 # Constants
 INF = sys.maxsize
 N_THREADS = 3
@@ -59,11 +61,11 @@ class RouteHop:
 
 
 class Route:
-    def __init__(self, total_amount=0, total_fee=0, total_timelock=0):
+    def __init__(self, total_amount=0, total_fee=0, total_timelock=0, route_hops=Array(5)):
         self.total_amount = total_amount
         self.total_fee = total_fee
         self.total_timelock = total_timelock
-        self.route_hops = Array(5)
+        self.route_hops = route_hops
 
 class PathHop:
     def __init__(self, sender, receiver, edge):
@@ -72,36 +74,27 @@ class PathHop:
         self.edge = edge
 
 
-def transform_path_into_route(path, amount, network):
+def transform_path_into_route(path: Array, amount: int, network):
     """
     Transforms a given path into a route for payment.
 
-    :param path: List of node IDs representing the path.
+    :param path: Array of PathHop objects representing the path.
     :param amount: Amount to forward along the path.
     :param network: Network object containing nodes and edges.
     :return: A Route object with hops populated based on the path and network information.
     """
-    if len(path) < 2:
-        raise ValueError("Path must contain at least two nodes.")
 
     route_hops = []
     timelock = network.final_timelock  # Assuming a predefined constant for the final timelock.
     total_fee = 0
 
     # Traverse the path and create RouteHops
-    for i in range(len(path) - 1):
-        from_node_id = path[i]
-        to_node_id = path[i + 1]
+    for i in range(len(path)):
+        from_node_id = path.get(i).sender
+        to_node_id = path.get(i).receiver
+        edge = network.edges.get(path.get(i).edge)
 
-        # Find the edge connecting these two nodes
-        edge = next(
-            (edge for edge in network.edges if edge.from_node_id == from_node_id and edge.to_node_id == to_node_id),
-            None
-        )
-        if edge is None:
-            raise ValueError(f"No edge found between node {from_node_id} and node {to_node_id} in the network.")
-
-        # Calculate the amount to forward and the fee
+        # Calculate the fee for this hop
         fee = compute_fee(amount, edge.policy)
         amount_to_forward = amount + fee
 
@@ -109,7 +102,7 @@ def transform_path_into_route(path, amount, network):
         route_hop = RouteHop(
             from_node_id=from_node_id,
             to_node_id=to_node_id,
-            edge_id=edge.id_,
+            edge_id=edge.id,
             amount_to_forward=amount_to_forward,
             timelock=timelock
         )
@@ -125,7 +118,12 @@ def transform_path_into_route(path, amount, network):
         total_fee += fee
 
     # Create and populate the Route object
-    route = Route(total_amount=amount, total_fee=total_fee, total_timelock=timelock)
+    route = Route(
+        total_amount=amount,
+        total_fee=total_fee,
+        total_timelock=timelock,
+        route_hops=Array(len(route_hops))
+    )
     for hop in route_hops:
         route.route_hops.insert(hop)  # Add each hop to the Route's Array of hops
 
@@ -209,10 +207,12 @@ def dijkstra_thread(args: DijkstraThreadArgs):
 def dijkstra(source, target, amount, network, current_time, p):
     # Initialize the source node and check balance conditions
     source_node = network.nodes.get(source)
-    max_balance, total_balance = get_balance(source_node)
+    max_balance, total_balance = get_balance(source_node, network)
     if amount > total_balance:
+        print_("Failed here 1")
         return None  # NOLOCALBALANCE error handling
     elif amount > max_balance:
+        print_("Failed here 2")
         return None  # NOPATH error handling
 
     # Clear the distance heap and set initial distances
@@ -256,7 +256,8 @@ def dijkstra(source, target, amount, network, current_time, p):
 
         # Retrieve best edges for the current node
         best_node = network.nodes.get(best_node_id)
-        for edge in best_node.open_edges:
+        for best_edge_id in best_node.open_edges:
+            edge = network.edges.get(best_edge_id)
             edge = network.edges.get(edge.counter_edge_id)
 
             from_node_id = edge.from_node_id
@@ -318,6 +319,7 @@ def dijkstra(source, target, amount, network, current_time, p):
     curr = source
     while curr != target:
         if distance[p][curr].next_edge == -1:
+            print_("Failed here 3")
             return None  # NOPATH error handling
 
         hop = PathHop(sender=curr, edge=distance[p][curr].next_edge,
@@ -354,7 +356,7 @@ def get_node_probability(node_results, amount, current_time):
     if list_len(node_results) == 0:
         return PREVSUCCESSPROBABILITY
     total_weight = total_probabilities = 0
-    for result in node_results:
+    for result in node_results.data:
         if amount <= result.success_amount:
             total_probabilities += PREVSUCCESSPROBABILITY
             total_weight += 1
@@ -372,9 +374,12 @@ def get_probability(from_node_id, to_node_id, amount, sender_id, current_time, n
         node_probability = get_node_probability(node_results, amount, current_time)
     return calculate_probability(node_results, to_node_id, amount, node_probability, current_time)
 
-def get_balance(node):
+def get_balance(node, network):
     max_balance = total_balance = 0
-    for edge in node.open_edges:
+    for edge_id in node.open_edges:
+        edge = network.edges.get(edge_id)  # Resolve the Edge object using its ID
+        if edge is None:  # Skip invalid edge IDs
+            continue
         total_balance += edge.balance
         max_balance = max(max_balance, edge.balance)
     return max_balance, total_balance

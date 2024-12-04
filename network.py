@@ -60,6 +60,7 @@ class Network:
         self.channels = Array(1000)
         self.edges = Array(2000)
         self.faulty_node_prob = None
+        self.final_timelock = MAXTIMELOCK
 
 # Write Network Files
 def write_network_files(network: Network):
@@ -208,5 +209,12 @@ def generate_network_from_files(nodes_filename: str, channels_filename: str, edg
             policy=policy
         )
         network.edges.insert(edge)
+
+        from_node = network.nodes.get(edge.from_node_id)
+        to_node = network.nodes.get(edge.to_node_id)
+        if from_node:
+            from_node.open_edges.insert(edge.id)
+        if to_node:
+            to_node.open_edges.insert(edge.id)
 
     return network

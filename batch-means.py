@@ -38,23 +38,21 @@ with open(output_dir_name + '/payments_output.csv', 'r') as csv_pay:#, open('xk.
      ## FIND BATCH LENGTH AND EXCLUDE TRANSIENT
 
      payments = list(csv.DictReader(csv_pay))
-     n = len(payments)
-     last_payment_time = int(payments[n-1]['start_time'])
-     remainder = last_payment_time%31
-     end_time = last_payment_time - remainder
-     batch_length = int(end_time/31)
+     end_time = max(int(float(pay['end_time'])) for pay in payments)
+     batch_length = end_time // n_batches
      print("Batch length: " + str(batch_length) + " ms")
      print("Total simulated time: " + str(end_time-batch_length) + " ms")
 
      ## COMPUTE PAYMENT STATS
-
      for pay in payments:
-          pay_start_time = int(pay['start_time'])
-          pay_end_time = int(pay['end_time'])
-          if pay_start_time<batch_length or pay_start_time >= end_time: continue
-          b = int(pay_start_time/batch_length) -1
+          pay_start_time = int(float(pay['start_time']))
+          pay_end_time = int(float(pay['end_time']))
+
+          b = max(0, (pay_start_time - batch_length) // batch_length)
+          b = min(b, n_batches - 1)
           batches['Total'][b] += 1
-          if pay['is_success']=='1':
+
+          if pay['is_success']:
                batches['Success'][b] += 1
                total_succeeded += 1
                attempts = int(pay['attempts'])
@@ -83,7 +81,6 @@ with open(output_dir_name + '/payments_output.csv', 'r') as csv_pay:#, open('xk.
 
 
 # COMPUTE PER-BATCH STATS
-
 for i in range (0, n_batches):
      if batches['Success'][i] == 0:
           batches['Time'][i] = total_mean_time
@@ -93,7 +90,8 @@ for i in range (0, n_batches):
           batches['Time'][i] = float(batches['Time'][i])/batches['Success'][i]
           batches['RouteLength'][i] = float(batches['RouteLength'][i])/batches['Success'][i]
           batches['Attempts'][i] = float(batches['Attempts'][i])/batches['Success'][i]
-
+     if batches['Total'][i] == 0:
+          continue
      batches['Success'][i] = float(batches['Success'][i])/batches['Total'][i]
      batches['FailNoPath'][i] = float(batches['FailNoPath'][i])/batches['Total'][i]
      batches['FailNoBalance'][i] = float(batches['FailNoBalance'][i])/batches['Total'][i]
